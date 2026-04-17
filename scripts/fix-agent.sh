@@ -2,23 +2,30 @@
 # fix-agent.sh
 # Called by GitHub Actions when AI review fails.
 # Reads /tmp/review_issues.json, invokes Claude Code to fix them, pushes fix.
+# Fix cycle counter persisted to disk — prevents infinite API cost loops.
 
 set -euo pipefail
 
 REPO_DIR="/home/$(whoami)/tonkit"
 LOG_DIR="$REPO_DIR/logs"
 LOCK_FILE="/tmp/tonkit-fix.lock"
+COUNTER_DIR="/tmp/tonkit-fix-counters"
 
 mkdir -p "$LOG_DIR"
+mkdir -p "$COUNTER_DIR"
+
+log() {
+  echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) FIX-AGENT: $1" | tee -a "$LOG_DIR/fix-agent.log"
+}
 
 # ── Lock check ──────────────────────────────────────────────────────────────
 if [ -f "$LOCK_FILE" ]; then
   LOCK_AGE=$(( $(date +%s) - $(stat -c %Y "$LOCK_FILE") ))
   if [ "$LOCK_AGE" -lt 7200 ]; then
-    echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) FIX-AGENT: lock exists ($LOCK_AGE seconds old), exiting" | tee -a "$LOG_DIR/fix-agent.log"
+    log "lock exists ($LOCK_AGE seconds old), exiting"
     exit 0
   fi
-  echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) FIX-AGENT: stale lock detected, removing" >> "$LOG_DIR/fix-agent.log"
+  log "stale lock detected ($LOCK_AGE seconds old), removing"
   rm "$LOCK_FILE"
 fi
 
@@ -31,27 +38,62 @@ trap cleanup EXIT
 
 # ── Read issues ──────────────────────────────────────────────────────────────
 if [ ! -f /tmp/review_issues.json ]; then
-  echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) FIX-AGENT: no review_issues.json found, exiting" >> "$LOG_DIR/fix-agent.log"
+  log "no review_issues.json found, exiting"
   exit 1
 fi
 
 ISSUES=$(cat /tmp/review_issues.json)
-echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) FIX-AGENT: triggered with issues: $ISSUES" >> "$LOG_DIR/fix-agent.log"
+log "triggered with issues: $ISSUES"
 
 # ── Pull latest ──────────────────────────────────────────────────────────────
 cd "$REPO_DIR"
-git pull origin main
+git pull origin main 2>&1 | tee -a "$LOG_DIR/fix-agent.log"
 
-# ── Get current task context ─────────────────────────────────────────────────
-CURRENT_TASK=$(grep -A1 "STATUS: DONE\|STATUS: IN_PROGRESS" ROADMAP.md | grep "## TASK:" | tail -1 | sed 's/## TASK: //' || echo "UNKNOWN")
+# ── Get current task from ROADMAP ─────────────────────────────────────────────
+CURRENT_TASK=$(grep -B1 "STATUS: IN_PROGRESS" ROADMAP.md | grep "## TASK:" | sed 's/## TASK: //' | head -1 || echo "UNKNOWN")
+log "current task: $CURRENT_TASK"
+
+# ── Disk-based fix cycle counter ──────────────────────────────────────────────
+# Counter key = task ID so each task gets its own cycle count
+# Prevents infinite loop if a task is fundamentally broken
+COUNTER_FILE="$COUNTER_DIR/cycles-${CURRENT_TASK}"
+CURRENT_COUNT=$(cat "$COUNTER_FILE" 2>/dev/null || echo 0)
+NEW_COUNT=$((CURRENT_COUNT + 1))
+echo "$NEW_COUNT" > "$COUNTER_FILE"
+
+log "fix cycle $NEW_COUNT of 3 for task $CURRENT_TASK"
+
+if [ "$NEW_COUNT" -gt 3 ]; then
+  log "MAX FIX CYCLES EXCEEDED for task $CURRENT_TASK — requires human decision"
+  echo "{\"type\":\"MAX_REVIEW_CYCLES_EXCEEDED\",\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"task\":\"$CURRENT_TASK\",\"cycles\":$NEW_COUNT}" >> "$LOG_DIR/failures.jsonl"
+
+  # Send Telegram alert if configured
+  if [ -n "${TELEGRAM_BOT_TOKEN:-}" ] && [ -n "${TELEGRAM_CHAT_ID:-}" ]; then
+    curl -s "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+      -d "chat_id=${TELEGRAM_CHAT_ID}" \
+      -d "text=⚠️ TonKit Pipeline BLOCKED: Task ${CURRENT_TASK} failed review 3 times. Human decision needed. Check /status" \
+      >> "$LOG_DIR/fix-agent.log" 2>&1 || true
+  fi
+
+  # Mark task as FAILED in ROADMAP using atomic write
+  if [ "$CURRENT_TASK" != "UNKNOWN" ]; then
+    sed "/## TASK: ${CURRENT_TASK}/,/^---$/{s/STATUS: IN_PROGRESS/STATUS: FAILED/}" ROADMAP.md > ROADMAP.tmp && mv ROADMAP.tmp ROADMAP.md
+    git add ROADMAP.md
+    git commit -m "fix: mark task ${CURRENT_TASK} FAILED after max review cycles [skip ci]" || true
+    git push origin main || true
+  fi
+
+  exit 1
+fi
 
 # ── Build fix prompt ─────────────────────────────────────────────────────────
-FIX_PROMPT="You are fixing specific code review issues in the TonKit Scanner project. 
+FIX_PROMPT="You are fixing specific code review issues in the TonKit Scanner project.
 
 The AI code reviewer rejected the last commit with these issues:
 $ISSUES
 
 Current task context: $CURRENT_TASK
+Fix cycle: $NEW_COUNT of 3
 
 Instructions:
 1. Read each issue carefully
@@ -63,21 +105,26 @@ Instructions:
 7. Remove /tmp/review_issues.json
 8. Exit
 
-Do not ask questions. Do not make changes beyond what the review flagged. Do not modify ROADMAP.md."
+IMPORTANT: Do not modify ROADMAP.md.
+Do not use sed -i on any file — use temp file + mv pattern.
+Do not ask questions. Fix and push."
 
 # ── Invoke Claude Code ───────────────────────────────────────────────────────
-echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) FIX-AGENT: invoking Claude Code" >> "$LOG_DIR/fix-agent.log"
+log "invoking Claude Code (cycle $NEW_COUNT)"
 
-# Claude Code CLI invocation — adjust path to your claude binary
 claude --print "$FIX_PROMPT" >> "$LOG_DIR/fix-agent.log" 2>&1
 
 EXIT_CODE=$?
-echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) FIX-AGENT: Claude Code exited with code $EXIT_CODE" >> "$LOG_DIR/fix-agent.log"
+log "Claude Code exited with code $EXIT_CODE"
 
 if [ $EXIT_CODE -ne 0 ]; then
-  echo "{\"type\":\"FIX_AGENT_FAILED\",\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"issues\":$ISSUES,\"exit_code\":$EXIT_CODE}" >> "$LOG_DIR/failures.jsonl"
+  echo "{\"type\":\"FIX_AGENT_FAILED\",\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"task\":\"$CURRENT_TASK\",\"cycle\":$NEW_COUNT,\"exit_code\":$EXIT_CODE}" >> "$LOG_DIR/failures.jsonl"
   exit 1
 fi
 
+# ── Clear counter on success ──────────────────────────────────────────────────
+# If fix succeeded, reset counter so next task starts fresh
+rm -f "$COUNTER_FILE"
+
 rm -f /tmp/review_issues.json
-echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) FIX-AGENT: complete" >> "$LOG_DIR/fix-agent.log"
+log "complete — fix cycle $NEW_COUNT succeeded"

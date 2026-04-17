@@ -16,23 +16,50 @@ Create the lock file:
 echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) PID:$$" > /tmp/tonkit-agent.lock
 ```
 
-### STEP 2: READ ROADMAP
+### STEP 2: VALIDATE ROADMAP INTEGRITY
+Before reading tasks, validate ROADMAP.md structure:
+```bash
+TASK_COUNT=$(grep -c "## TASK:" ROADMAP.md)
+STATUS_COUNT=$(grep -c "^STATUS:" ROADMAP.md)
+if [ "$TASK_COUNT" -ne "$STATUS_COUNT" ]; then
+  echo "ROADMAP INTEGRITY FAIL: $TASK_COUNT tasks but $STATUS_COUNT status lines"
+  echo "{\"type\":\"ROADMAP_CORRUPT\",\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"tasks\":$TASK_COUNT,\"statuses\":$STATUS_COUNT}" >> logs/failures.jsonl
+  rm /tmp/tonkit-agent.lock
+  exit 1
+fi
+# Validate all STATUS values are valid enum
+INVALID=$(grep "^STATUS:" ROADMAP.md | grep -v "^STATUS: \(PENDING\|IN_PROGRESS\|DONE\|FAILED\)$" | wc -l)
+if [ "$INVALID" -gt 0 ]; then
+  echo "ROADMAP INTEGRITY FAIL: invalid STATUS values found"
+  echo "{\"type\":\"ROADMAP_INVALID_STATUS\",\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" >> logs/failures.jsonl
+  rm /tmp/tonkit-agent.lock
+  exit 1
+fi
+```
+
+### STEP 3: READ ROADMAP
 Read ROADMAP.md in its entirety:
 ```bash
 cat ROADMAP.md
 ```
 Find the first task block where `STATUS: PENDING`. If no PENDING tasks exist, print "ROADMAP COMPLETE - all tasks done." Remove the lock file and exit.
 
-### STEP 3: CLAIM THE TASK
-Update the task status to IN_PROGRESS using sed. The task id is the `## TASK: TXXX` identifier:
-```bash
-sed -i "s/^STATUS: PENDING$/STATUS: IN_PROGRESS/" ROADMAP.md
-```
-Wait — this will match the FIRST occurrence only if you process the file sequentially. Use the task-specific sed:
+### STEP 4: CLAIM THE TASK
+**IMPORTANT: Use atomic writes for all ROADMAP.md modifications.**
+Never use `sed -i` directly on ROADMAP.md — always write to a temp file first, then move.
+
+Update the task status to IN_PROGRESS atomically:
 ```bash
 TASK_ID="T001"  # replace with actual task id
-sed -i "/## TASK: ${TASK_ID}/,/^---$/{s/STATUS: PENDING/STATUS: IN_PROGRESS/}" ROADMAP.md
+sed "/## TASK: ${TASK_ID}/,/^---$/{s/STATUS: PENDING/STATUS: IN_PROGRESS/}" ROADMAP.md > ROADMAP.tmp && mv ROADMAP.tmp ROADMAP.md
 ```
+
+Verify the change was applied:
+```bash
+grep -A3 "## TASK: ${TASK_ID}" ROADMAP.md | grep "STATUS:"
+```
+If it does not show IN_PROGRESS, the sed failed — exit with failure.
+
 Commit this status change immediately so no other process can claim the same task:
 ```bash
 git add ROADMAP.md
@@ -41,7 +68,7 @@ git push origin main
 ```
 The `[skip ci]` tag prevents GitHub Actions from triggering on status-only commits.
 
-### STEP 4: READ THE TASK FULLY
+### STEP 5: READ THE TASK FULLY
 Re-read the task block carefully. Extract:
 - TITLE
 - ACCEPTANCE_CRITERIA (every checkbox)
@@ -50,7 +77,7 @@ Re-read the task block carefully. Extract:
 - COMPLETION_SIGNAL
 - OUT_OF_SCOPE
 
-### STEP 5: BUILD
+### STEP 6: BUILD
 Implement every item in ACCEPTANCE_CRITERIA. Rules:
 - Only create or modify files listed in FILES_AFFECTED
 - Do not create any file not in FILES_AFFECTED
@@ -60,7 +87,7 @@ Implement every item in ACCEPTANCE_CRITERIA. Rules:
 - Use TypeScript strictly — no `any` types unless unavoidable and documented
 - All environment variables must be accessed via `process.env.VARNAME` and listed in `.env.example`
 
-### STEP 6: RUN TESTS
+### STEP 7: RUN TESTS
 Run the TEST_COMMAND exactly as written in the task:
 ```bash
 <TEST_COMMAND from task>
@@ -72,15 +99,21 @@ If the test command exits non-zero:
 4. Repeat up to 3 times total
 If tests still fail after 3 attempts, go to FAILURE PROCEDURE.
 
-### STEP 7: VERIFY COMPLETION SIGNAL
-Check the COMPLETION_SIGNAL condition manually. If it specifies a file must exist, verify it. If it specifies a command must exit 0, run it. If the completion signal is not met, return to STEP 6.
+### STEP 8: VERIFY COMPLETION SIGNAL
+Check the COMPLETION_SIGNAL condition manually. If it specifies a file must exist, verify it. If it specifies a command must exit 0, run it. If the completion signal is not met, return to STEP 7.
 
-### STEP 8: MARK DONE AND COMMIT
-Update ROADMAP.md task status to DONE:
+### STEP 9: MARK DONE AND COMMIT
+Update ROADMAP.md task status to DONE using atomic write:
 ```bash
 TASK_ID="T001"  # replace with actual task id
-sed -i "/## TASK: ${TASK_ID}/,/^---$/{s/STATUS: IN_PROGRESS/STATUS: DONE/}" ROADMAP.md
+sed "/## TASK: ${TASK_ID}/,/^---$/{s/STATUS: IN_PROGRESS/STATUS: DONE/}" ROADMAP.md > ROADMAP.tmp && mv ROADMAP.tmp ROADMAP.md
 ```
+
+Verify:
+```bash
+grep -A3 "## TASK: ${TASK_ID}" ROADMAP.md | grep "STATUS: DONE"
+```
+
 Commit all changes:
 ```bash
 git add -A
@@ -95,7 +128,7 @@ Test result: PASS"
 git push origin main
 ```
 
-### STEP 9: REMOVE LOCK AND EXIT
+### STEP 10: REMOVE LOCK AND EXIT
 ```bash
 rm /tmp/tonkit-agent.lock
 ```
@@ -107,9 +140,9 @@ Exit.
 ## FAILURE PROCEDURE
 If tests fail after 3 attempts, or if any unrecoverable error occurs:
 
-1. Update ROADMAP.md task status to FAILED:
+1. Update ROADMAP.md task status to FAILED using atomic write:
 ```bash
-sed -i "/## TASK: ${TASK_ID}/,/^---$/{s/STATUS: IN_PROGRESS/STATUS: FAILED/}" ROADMAP.md
+sed "/## TASK: ${TASK_ID}/,/^---$/{s/STATUS: IN_PROGRESS/STATUS: FAILED/}" ROADMAP.md > ROADMAP.tmp && mv ROADMAP.tmp ROADMAP.md
 ```
 
 2. Append a failure log entry to ROADMAP.md under the task:
@@ -120,7 +153,7 @@ ERROR: <exact error message, truncated to 500 chars>
 ATTEMPTS: <number of attempts made>
 ```
 
-3. Commit:
+3. Commit atomically:
 ```bash
 git add ROADMAP.md
 git commit -m "fix: mark task ${TASK_ID} as FAILED [skip ci]
@@ -134,6 +167,7 @@ git push origin main
 ---
 
 ## ABSOLUTE PROHIBITIONS
+- Never use `sed -i` on ROADMAP.md — always use temp file + mv
 - Never modify a file not listed in the current task's FILES_AFFECTED
 - Never implement features listed in any task's OUT_OF_SCOPE
 - Never push if tests are failing
@@ -142,6 +176,7 @@ git push origin main
 - Never create placeholder implementations — every function must work correctly
 - Never use `console.log` for debugging in production code — use it only in test files
 - Never commit secrets or API keys — use environment variables only
+- Never write STATUS values other than: PENDING, IN_PROGRESS, DONE, FAILED
 
 ---
 
