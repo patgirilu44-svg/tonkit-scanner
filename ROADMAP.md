@@ -522,11 +522,59 @@ COMPLETION_SIGNAL:
 TEST_COMMAND exits 0. Webhook route validates signature before any processing.
 
 OUT_OF_SCOPE:
-- TON crypto payments (Month 2)
+- TON crypto payments (handled in T013b — separate task)
 - Subscription/monitoring payments
 - Refund handling
 
 ---
+
+---
+
+## TASK: T013b
+STATUS: PENDING
+TITLE: USDT-TON crypto payment integration
+PHASE: Payments
+
+DESCRIPTION:
+Implement USDT-TON Jetton transfer payment detection as Day 1 feature.
+India payment complexity makes crypto mandatory from launch — not optional.
+TON developers are crypto-native. USDT-TON = instant settlement, no SWIFT/bank delays.
+Payout flow: USDT-TON → TON wallet → WazirX/CoinDCX → INR same day.
+
+ACCEPTANCE_CRITERIA:
+- [ ] app/api/crypto-checkout/route.ts exports POST handler that generates unique TON payment address per report
+- [ ] Payment address derived via HD wallet path from MASTER_TON_SEED + reportId (deterministic, no storage needed)
+- [ ] Returns: { tonAddress: string, usdtAmount: number, expiresAt: string }
+- [ ] USDT amount calculated from $49 USD at current rate via TON API price feed
+- [ ] app/api/webhooks/ton-payment/route.ts polls TONapi for USDT-TON Jetton transfers to payment address
+- [ ] Webhook detects incoming USDT transfer matching expected amount (±2% tolerance for rate fluctuation)
+- [ ] On confirmed payment: calls updateReportPaid(reportId, txHash)
+- [ ] Polling cron: Vercel cron job checks pending crypto payments every 5 minutes
+- [ ] Report page shows two payment options: "Pay $49 by Card" and "Pay with USDT-TON"
+- [ ] USDT-TON option shows QR code + TON address + amount + expiry timer (30 min)
+- [ ] components/CryptoPaymentGate.tsx renders QR code using qrcode library
+- [ ] Expired payments (>30 min, no payment received) show "Payment expired — generate new address" button
+- [ ] .env.example updated with MASTER_TON_SEED and TONAPI_KEY
+
+FILES_AFFECTED:
+- app/api/crypto-checkout/route.ts
+- app/api/webhooks/ton-payment/route.ts
+- components/CryptoPaymentGate.tsx
+- app/report/[reportId]/page.tsx
+- .env.example
+- vercel.json
+
+TEST_COMMAND:
+npx tsc --noEmit
+
+COMPLETION_SIGNAL:
+TEST_COMMAND exits 0. app/api/crypto-checkout/route.ts exists and returns tonAddress + usdtAmount.
+
+OUT_OF_SCOPE:
+- TON (native) payments — USDT-TON only (stablecoin, no price volatility)
+- Other crypto (ETH, BTC, SOL)
+- Subscription crypto payments
+
 
 ## TASK: T014
 STATUS: PENDING

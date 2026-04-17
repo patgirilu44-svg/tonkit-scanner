@@ -44,8 +44,11 @@ Use: "scan", "analysis", "vulnerability scan", "security scan".
 | Full Report | $49 | All findings, confidence tiers, PDF export, full AI analysis |
 | B2B API | $149+/month | White-label, monitoring, volume (Month 8+) |
 
-Payment processor: Lemon Squeezy (merchant of record, no Indian company required, handles global VAT)
-Crypto payments: USDT-TON via Jetton transfers — Month 2 feature, not MVP
+Payment processor: Lemon Squeezy (merchant of record, no Indian company required, handles global VAT) — for international card payments
+Crypto payments: USDT-TON via Jetton transfers — DAY 1 FEATURE (not Month 2)
+Reason: India international payment complexity (SWIFT delays 15-30 days, bank friction). TON developers are crypto-native. USDT-TON = instant settlement, no bank drama.
+Payout flow: USDT-TON → TON wallet → WazirX/CoinDCX → INR same day
+Both payment methods live from launch: Lemon Squeezy for card, USDT-TON for crypto
 
 ---
 
