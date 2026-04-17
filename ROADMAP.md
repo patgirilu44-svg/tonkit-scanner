@@ -527,9 +527,6 @@ OUT_OF_SCOPE:
 - Refund handling
 
 ---
-
----
-
 ## TASK: T013b
 STATUS: PENDING
 TITLE: USDT-TON crypto payment integration
