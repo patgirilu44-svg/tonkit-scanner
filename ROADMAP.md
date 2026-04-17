@@ -378,6 +378,9 @@ rule engine → Claude AI → Supabase storage → return report ID.
 
 ACCEPTANCE_CRITERIA:
 - [ ] lib/ai/prompts.ts exports buildSystemPrompt(language) and buildUserPrompt(source, language, ruleSummary)
+- [ ] buildSystemPrompt() includes: (1) "Think step by step before outputting findings" (2) TON async actor model context (3) per-finding reasoning requirement (4) anti-hallucination guard for low-confidence findings
+- [ ] AI response JSON includes `reasoning` field at top level AND per finding
+- [ ] Low confidence findings without clear reasoning are downgraded to INFO severity in the parser
 - [ ] System prompt instructs Claude to respond ONLY with valid JSON matching AiAnalysisResult type
 - [ ] System prompt explicitly says: do not repeat findings already in ruleSummary, focus on logic/semantic issues
 - [ ] lib/ai/analyze.ts exports analyzeWithClaude(source, language, ruleFindings) using claude-sonnet-4-6
@@ -527,6 +530,9 @@ OUT_OF_SCOPE:
 - Refund handling
 
 ---
+
+---
+
 ## TASK: T013b
 STATUS: PENDING
 TITLE: USDT-TON crypto payment integration

@@ -270,3 +270,47 @@ NEXT_PUBLIC_APP_URL=
 8. Always include rule_engine_version in every report record
 9. Always set maxDuration = 60 on the /api/scan route
 10. Always use @vercel/og with runtime = 'edge' for OG image generation
+
+---
+
+## AI Analysis — Chain of Thought Requirement
+
+Claude API analysis must use Chain of Thought reasoning — NOT just output findings directly.
+
+**Required JSON response shape from AI:**
+```json
+{
+  "reasoning": "Step-by-step explanation of what the contract does, what patterns were checked, and why each finding was flagged or cleared",
+  "summary": "2-3 sentence overall assessment",
+  "gas_efficiency_score": 0-100,
+  "additional_findings": [
+    {
+      "id": "AI-001",
+      "title": "string",
+      "severity": "CRITICAL|HIGH|MEDIUM|LOW|INFO",
+      "confidence": "HIGH|MEDIUM|LOW",
+      "reasoning": "Why this specific code pattern is dangerous in TON's async actor model",
+      "description": "string",
+      "recommendation": "string",
+      "line_hint": "string or null"
+    }
+  ]
+}
+```
+
+**Why this matters:**
+- Claude without CoT = pattern matching on surface syntax = misses TVM-specific exploits
+- Claude with CoT = forced to reason about TON's async message model before concluding
+- Each finding must have its own `reasoning` field explaining WHY it's dangerous in TON context
+- Low confidence findings without clear reasoning = downgraded to INFO severity automatically
+
+**System prompt must include:**
+- Explicit instruction: "Think step by step before outputting findings"
+- TON actor model context: "TON contracts communicate via asynchronous messages, not synchronous calls"
+- Reasoning requirement: "For each finding, explain why it is dangerous specifically in TON's execution model"
+- Anti-hallucination guard: "If you are not confident about a finding, set confidence to LOW and explain your uncertainty in the reasoning field"
+
+**In lib/ai/prompts.ts:**
+- buildSystemPrompt() must include all 4 instructions above
+- buildUserPrompt() must ask Claude to reason before concluding
+- Response parser must extract and store `reasoning` field in ai_findings jsonb column
