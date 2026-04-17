@@ -102,6 +102,28 @@ If tests still fail after 3 attempts, go to FAILURE PROCEDURE.
 ### STEP 8: VERIFY COMPLETION SIGNAL
 Check the COMPLETION_SIGNAL condition manually. If it specifies a file must exist, verify it. If it specifies a command must exit 0, run it. If the completion signal is not met, return to STEP 7.
 
+
+### STEP 8.5: VERIFY ACCEPTANCE CRITERIA
+Before marking DONE, run every item listed in the ACCEPTANCE section of the task.
+The ACCEPTANCE section contains specific commands or checks that prove the implementation is functionally correct — not just that it compiles.
+
+If the task has an ACCEPTANCE section:
+```bash
+# Run each acceptance check manually
+# Example: if ACCEPTANCE says "npx tsc --noEmit exits 0"
+npx tsc --noEmit || { echo "ACCEPTANCE FAILED: TypeScript errors"; exit 1; }
+
+# Example: if ACCEPTANCE says "jest test file passes"
+npx jest __tests__/specific.test.ts || { echo "ACCEPTANCE FAILED: tests"; exit 1; }
+```
+
+If any acceptance criterion fails:
+1. Do NOT mark task DONE
+2. Fix the implementation
+3. Return to STEP 6
+
+Do NOT skip this step. A task that compiles but does not meet acceptance criteria is NOT done.
+
 ### STEP 9: MARK DONE AND COMMIT
 Update ROADMAP.md task status to DONE using atomic write:
 ```bash
@@ -189,6 +211,8 @@ If counts match, pipeline is safe to resume. Reset the affected task to PENDING 
 - Never create placeholder implementations — every function must work correctly
 - Never use `console.log` for debugging in production code — use it only in test files
 - Never commit secrets or API keys — use environment variables only
+- When fixing review issues, commit message MUST end with [review-fix] — this tag is non-negotiable and must appear verbatim
+- FAILED status commits MUST include [skip ci] — never push a FAILED status without this tag
 - Never write STATUS values other than: PENDING, IN_PROGRESS, DONE, FAILED
 
 ---

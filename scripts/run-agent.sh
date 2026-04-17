@@ -24,8 +24,19 @@ if [ -f "$LOCK_FILE" ]; then
     log "AGENT: active session in progress ($LOCK_AGE seconds old), skipping"
     exit 0
   fi
-  log "AGENT: stale lock ($LOCK_AGE seconds old), removing and continuing"
+  log "AGENT: stale lock ($LOCK_AGE seconds old), removing and resetting stuck task"
   rm "$LOCK_FILE"
+  # Reset any IN_PROGRESS task to PENDING — stale lock = crashed session
+  # Without this, the task stays IN_PROGRESS forever and pipeline skips it
+  cd "$REPO_DIR"
+  if grep -q "STATUS: IN_PROGRESS" ROADMAP.md 2>/dev/null; then
+    STUCK_TASK=$(grep -B1 "STATUS: IN_PROGRESS" ROADMAP.md | grep "## TASK:" | sed 's/## TASK: //' | head -1)
+    log "AGENT: resetting stuck task $STUCK_TASK from IN_PROGRESS to PENDING"
+    sed "/## TASK: ${STUCK_TASK}/,/^---$/{s/STATUS: IN_PROGRESS/STATUS: PENDING/}" ROADMAP.md > ROADMAP.md.tmp && mv ROADMAP.md.tmp ROADMAP.md || true
+    git add ROADMAP.md
+    git commit -m "fix: reset stuck task ${STUCK_TASK} after stale lock [skip ci]" || true
+    git push origin main || true
+  fi
 fi
 
 # ── Pull latest ───────────────────────────────────────────────────────────────

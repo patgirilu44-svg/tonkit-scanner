@@ -55,6 +55,10 @@ OUT_OF_SCOPE:
 - No API routes yet
 - No rule engine yet
 
+ACCEPTANCE:
+- npx tsc --noEmit exits 0
+- npx jest --passWithNoTests exits 0
+- package.json exists with @anthropic-ai/sdk in dependencies
 ---
 
 ## TASK: T002
@@ -92,6 +96,10 @@ OUT_OF_SCOPE:
 - No API routes
 - No UI
 
+ACCEPTANCE:
+- npx tsc --noEmit exits 0
+- lib/db/types.ts exists and contains "Report" type
+- grep -c "contract_code" lib/db/types.ts returns 0 (source code never stored)
 ---
 
 ## TASK: T003
@@ -143,6 +151,10 @@ OUT_OF_SCOPE:
 - Actual rule implementations (rules don't exist yet — fixture-runner.test.ts imports stubs)
 - FunC fixtures (Phase 2 only)
 
+ACCEPTANCE:
+- ls fixtures/tact/ shows 5 directories
+- npx jest __tests__/fixtures/fixture-runner.test.ts --passWithNoTests exits 0
+- each fixture directory has exactly 3 files
 ---
 
 ## TASK: T004
@@ -185,6 +197,10 @@ OUT_OF_SCOPE:
 - AI integration
 - API routes
 
+ACCEPTANCE:
+- npx jest __tests__/scoring.test.ts exits 0
+- npx tsc --noEmit exits 0
+- lib/rule-engine/index.ts exports runRuleEngine function
 ---
 
 ## TASK: T005
@@ -223,6 +239,10 @@ OUT_OF_SCOPE:
 - AI integration
 - Any rule other than TACT-001
 
+ACCEPTANCE:
+- npx jest __tests__/rule-engine/tact-001.test.ts exits 0
+- vulnerable.tact triggers rule (test asserts findings.length > 0)
+- clean.tact does not trigger rule (test asserts findings.length === 0)
 ---
 
 ## TASK: T006
@@ -259,6 +279,10 @@ OUT_OF_SCOPE:
 - Any rule other than TACT-002
 - FunC rules
 
+ACCEPTANCE:
+- npx jest __tests__/rule-engine/tact-002.test.ts exits 0
+- vulnerable.tact triggers rule
+- clean.tact does not trigger rule
 ---
 
 ## TASK: T007
@@ -294,6 +318,10 @@ TEST_COMMAND exits 0. Both fixture tests pass.
 OUT_OF_SCOPE:
 - Any rule other than TACT-003
 
+ACCEPTANCE:
+- npx jest __tests__/rule-engine/tact-003.test.ts exits 0
+- vulnerable.tact triggers rule
+- clean.tact does not trigger rule
 ---
 
 ## TASK: T008
@@ -329,6 +357,10 @@ TEST_COMMAND exits 0. Both fixture tests pass.
 OUT_OF_SCOPE:
 - Any rule other than TACT-004
 
+ACCEPTANCE:
+- npx jest __tests__/rule-engine/tact-004.test.ts exits 0
+- vulnerable.tact triggers rule
+- clean.tact does not trigger rule
 ---
 
 ## TASK: T009
@@ -366,6 +398,10 @@ OUT_OF_SCOPE:
 - Any rule other than TACT-005
 - FunC rules
 
+ACCEPTANCE:
+- npx jest __tests__/rule-engine/tact-005.test.ts exits 0
+- npx jest --testPathPattern="rule-engine|fixture-runner" exits 0
+- all 5 Tact fixture pairs pass
 ---
 
 ## TASK: T010
@@ -410,6 +446,11 @@ OUT_OF_SCOPE:
 - OG image generation
 - Frontend UI
 
+ACCEPTANCE:
+- npx jest __tests__/api/scan.test.ts exits 0
+- npx tsc --noEmit exits 0
+- app/api/scan/route.ts contains "maxDuration = 60"
+- lib/ai/analyze.ts uses model "claude-sonnet-4-6"
 ---
 
 ## TASK: T011
@@ -452,6 +493,10 @@ OUT_OF_SCOPE:
 - PDF generation
 - Monitoring features
 
+ACCEPTANCE:
+- npx tsc --noEmit exits 0
+- app/api/og/[reportId]/route.ts contains "runtime = 'edge'"
+- app/report/[reportId]/page.tsx exports generateMetadata
 ---
 
 ## TASK: T012
@@ -490,6 +535,10 @@ OUT_OF_SCOPE:
 - Authentication
 - User accounts
 
+ACCEPTANCE:
+- npx tsc --noEmit exits 0
+- app/page.tsx exists and contains no instance of the word "audit"
+- app/scan/page.tsx exists
 ---
 
 ## TASK: T013
@@ -530,6 +579,10 @@ OUT_OF_SCOPE:
 - Subscription/monitoring payments
 - Refund handling
 
+ACCEPTANCE:
+- npx tsc --noEmit exits 0
+- app/api/webhooks/lemonsqueezy/route.ts contains "LS_WEBHOOK_SECRET"
+- grep -i "audit" app/api/checkout/route.ts returns empty (word audit not used)
 ---
 
 ---
@@ -619,6 +672,15 @@ OUT_OF_SCOPE:
 - Email notifications for disputes
 - User authentication
 
+ACCEPTANCE:
+- npx tsc --noEmit exits 0
+- app/api/crypto-checkout/route.ts exists and exports POST handler
+- .env.example contains MASTER_TON_SEED and TONAPI_KEY
+
+ACCEPTANCE:
+- npx jest __tests__/api/health.test.ts exits 0
+- app/api/health/route.ts exists
+- app/api/scan/route.ts contains "@vercel/kv" import for rate limiting
 ---
 
 ## TASK: T015
@@ -661,6 +723,11 @@ OUT_OF_SCOPE:
 - Blog posts
 - Dynamic content
 
+ACCEPTANCE:
+- npx tsc --noEmit exits 0
+- ls app/vulnerabilities/ shows 5+ directories
+- each vulnerability page exports generateMetadata
+- grep -r "audit" app/vulnerabilities/ returns empty
 ---
 
 ## TASK: T016
@@ -701,6 +768,10 @@ TEST_COMMAND exits 0. FunC fixture pair passes.
 OUT_OF_SCOPE:
 - FUNC-002 through FUNC-005 (separate tasks)
 
+ACCEPTANCE:
+- npx jest __tests__/rule-engine/func-001.test.ts exits 0
+- vulnerable.fc triggers rule
+- clean.fc does not trigger rule
 ---
 
 ## TASK: T017
@@ -756,3 +827,8 @@ OUT_OF_SCOPE:
 - Monitoring tier
 - B2B API
 - New vulnerability pages for FunC rules (add after this task)
+
+ACCEPTANCE:
+- npx jest --testPathPattern="rule-engine|fixture-runner" exits 0
+- all 9 rules pass (5 Tact + 4 FunC)
+- all fixture pairs pass for all rules

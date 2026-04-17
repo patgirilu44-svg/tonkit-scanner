@@ -36,6 +36,17 @@ cleanup() {
 }
 trap cleanup EXIT
 
+
+# ── Check run-agent is not active ─────────────────────────────────────────────
+# fix-agent must not run concurrently with run-agent
+if [ -f "/tmp/tonkit-agent.lock" ]; then
+  AGENT_LOCK_AGE=$(( $(date +%s) - $(stat -c %Y /tmp/tonkit-agent.lock) ))
+  if [ "$AGENT_LOCK_AGE" -lt 7200 ]; then
+    log "run-agent is active ($AGENT_LOCK_AGE seconds old) — deferring fix-agent to avoid concurrent ROADMAP writes"
+    exit 0
+  fi
+fi
+
 # ── Read issues ──────────────────────────────────────────────────────────────
 if [ ! -f /tmp/review_issues.json ]; then
   log "no review_issues.json found, exiting"
@@ -49,7 +60,8 @@ log "triggered with issues: $ISSUES"
 cd "$REPO_DIR"
 git pull origin main 2>&1 | tee -a "$LOG_DIR/fix-agent.log"
 
-# ── Get current task from ROADMAP ─────────────────────────────────────────────
+# ── Get current task from ROADMAP (authoritative source) ──────────────────────
+# NEVER derive task ID from commit message — it may be missing or malformed
 CURRENT_TASK=$(grep -B1 "STATUS: IN_PROGRESS" ROADMAP.md | grep "## TASK:" | sed 's/## TASK: //' | head -1 || echo "UNKNOWN")
 log "current task: $CURRENT_TASK"
 
@@ -59,6 +71,8 @@ log "current task: $CURRENT_TASK"
 COUNTER_FILE="$COUNTER_DIR/cycles-${CURRENT_TASK}"
 CURRENT_COUNT=$(cat "$COUNTER_FILE" 2>/dev/null || echo 0)
 NEW_COUNT=$((CURRENT_COUNT + 1))
+# NOTE: Counter written to disk immediately so SSH drops don't allow unlimited retries
+# Counter is incremented at START of attempt (not after) — conservative approach
 echo "$NEW_COUNT" > "$COUNTER_FILE"
 
 log "fix cycle $NEW_COUNT of 3 for task $CURRENT_TASK"
@@ -101,6 +115,7 @@ Instructions:
 3. Fix only what the review flagged — do not refactor unrelated code
 4. Run the relevant test command for the affected task after fixing
 5. If tests pass, commit with message: 'fix: address review issues for $CURRENT_TASK [review-fix]'
+   CRITICAL: The [review-fix] tag is NON-NEGOTIABLE and MUST appear verbatim at the end of the commit message
 6. Push to main
 7. Remove /tmp/review_issues.json
 8. Exit
