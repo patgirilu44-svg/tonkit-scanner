@@ -41,7 +41,7 @@ Use: "scan", "analysis", "vulnerability scan", "security scan".
 | Tier | Price | What they get |
 |---|---|---|
 | Free | $0 | Summary report, 3 findings visible, shareable URL, Telegram OG card |
-| Full Report | $49 | All findings, confidence tiers, PDF export, full AI analysis |
+| Full Report | $19 | All findings, confidence tiers, PDF export, full AI analysis |
 | B2B API | $149+/month | White-label, monitoring, volume (Month 8+) |
 
 Payment processor: Lemon Squeezy (merchant of record, no Indian company required, handles global VAT) — for international card payments
@@ -232,7 +232,7 @@ Positioning: "Catch issues BEFORE you pay for a manual audit" — complementary 
 
 | Month | Activity | Revenue |
 |---|---|---|
-| 1-2 | $49 one-time reports | $500-1,500 |
+| 1-2 | $19 one-time reports | $500-1,500 |
 | 3-4 | Reports scaling | $2,000-4,000 |
 | 5-6 | Monitoring tier launches ($79/month) | $3,000-6,000/month |
 | 8-12 | B2B API deals | $500-2,000/month recurring |
@@ -331,7 +331,7 @@ We do NOT replace Misti. We ADD reasoning layer + hosted reports + viral badge n
 ### Pricing Change
 $49 is the dead zone — too expensive for hobbyists, too cheap to be credible.
 Decision needed before launch: either $19 (volume, mass-market) or $299 (pre-token-launch teams).
-$49 pricing deprecated.
+$49 pricing deprecated. **New price: $19 full report** (volume strategy, mass-market TON devs).
 
 ### Infrastructure Upgrade — Mandatory From Day One
 Vercel Hobby = ToS violation on first commercial transaction. Must use Vercel Pro ($20/month).

@@ -547,18 +547,18 @@ TITLE: Lemon Squeezy payment integration
 PHASE: Payments
 
 DESCRIPTION:
-Implement $49 payment gate. Checkout creates a Lemon Squeezy session.
+Implement $19 payment gate. Checkout creates a Lemon Squeezy session.
 Webhook unlocks the full report on successful payment.
 
 ACCEPTANCE_CRITERIA:
-- [ ] app/api/checkout/route.ts exports POST handler that creates Lemon Squeezy checkout for $49 product
+- [ ] app/api/checkout/route.ts exports POST handler that creates Lemon Squeezy checkout for $19 product
 - [ ] Checkout request includes: email, custom data with report_id
 - [ ] Checkout response returns: { checkoutUrl: string }
 - [ ] app/api/webhooks/lemonsqueezy/route.ts exports POST handler
 - [ ] Webhook verifies HMAC-SHA256 signature using LS_WEBHOOK_SECRET before processing
 - [ ] Webhook handles order_created event: reads report_id from custom_data, calls updateReportPaid(reportId, orderId)
 - [ ] Webhook returns 401 on invalid signature, 200 on success
-- [ ] components/PaymentGate.tsx renders: blurred findings overlay, "Unlock Full Report — $49" button, button calls /api/checkout and redirects to checkoutUrl
+- [ ] components/PaymentGate.tsx renders: blurred findings overlay, "Unlock Full Report — $19" button, button calls /api/checkout and redirects to checkoutUrl
 - [ ] PaymentGate shows loading state while checkout session creates
 - [ ] Report page (/report/[reportId]) checks is_paid, shows full findings if true, PaymentGate if false
 
@@ -602,12 +602,12 @@ ACCEPTANCE_CRITERIA:
 - [ ] app/api/crypto-checkout/route.ts exports POST handler that generates unique TON payment address per report
 - [ ] Payment address derived via HD wallet path from MASTER_TON_SEED + reportId (deterministic, no storage needed)
 - [ ] Returns: { tonAddress: string, usdtAmount: number, expiresAt: string }
-- [ ] USDT amount calculated from $49 USD at current rate via TON API price feed
+- [ ] USDT amount calculated from $19 USD at current rate via TON API price feed
 - [ ] app/api/webhooks/ton-payment/route.ts polls TONapi for USDT-TON Jetton transfers to payment address
 - [ ] Webhook detects incoming USDT transfer matching expected amount (±2% tolerance for rate fluctuation)
 - [ ] On confirmed payment: calls updateReportPaid(reportId, txHash)
 - [ ] Polling cron: Vercel cron job checks pending crypto payments every 5 minutes
-- [ ] Report page shows two payment options: "Pay $49 by Card" and "Pay with USDT-TON"
+- [ ] Report page shows two payment options: "Pay $19 by Card" and "Pay with USDT-TON"
 - [ ] USDT-TON option shows QR code + TON address + amount + expiry timer (30 min)
 - [ ] components/CryptoPaymentGate.tsx renders QR code using qrcode library
 - [ ] Expired payments (>30 min, no payment received) show "Payment expired — generate new address" button
