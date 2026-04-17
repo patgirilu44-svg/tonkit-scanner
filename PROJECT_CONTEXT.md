@@ -314,3 +314,51 @@ Claude API analysis must use Chain of Thought reasoning — NOT just output find
 - buildSystemPrompt() must include all 4 instructions above
 - buildUserPrompt() must ask Claude to reason before concluding
 - Response parser must extract and store `reasoning` field in ai_findings jsonb column
+
+---
+
+## CRITICAL UPDATES (Post Final Audit)
+
+### Misti Competitor — Changes Positioning Entirely
+Misti (github.com/nowarp/misti) is TON Foundation grant-funded static analyzer with 42 detectors.
+It is FREE, open source, has Blueprint plugin and GitHub Actions integration.
+Our 5 Tact rules are a subset of Misti's coverage.
+
+**New positioning:** "TonKit Scanner adds Claude AI Chain-of-Thought reasoning and shareable report URLs on top of Misti-level detection — catch issues, understand WHY they're dangerous in TON's async model, share proof."
+
+We do NOT replace Misti. We ADD reasoning layer + hosted reports + viral badge network.
+
+### Pricing Change
+$49 is the dead zone — too expensive for hobbyists, too cheap to be credible.
+Decision needed before launch: either $19 (volume, mass-market) or $299 (pre-token-launch teams).
+$49 pricing deprecated.
+
+### Infrastructure Upgrade — Mandatory From Day One
+Vercel Hobby = ToS violation on first commercial transaction. Must use Vercel Pro ($20/month).
+Supabase Free = auto-pause kills payments silently. Must use Supabase Pro ($25/month).
+
+**Revised monthly cost floor:** $67/month (~₹5,600)
+- Hetzner CX22: €3.79 (~₹340)
+- Vercel Pro: $20 (~₹1,680)
+- Supabase Pro: $25 (~₹2,100)
+- Anthropic API: ~$10 (~₹840)
+
+### T019 Added — Highest Priority Feature
+Redacted free tier (line numbers visible, content hidden) + TonKit Verified badge embed.
+This is the single highest-leverage conversion feature. Added as T019 to ROADMAP.
+
+### Supabase Connection Pooling
+Use Supabase Supavisor in transaction mode — not direct connection.
+Vercel cold starts exhaust free tier connection pool under burst traffic.
+
+### USDT-TON Payment — Updated Rules
+- Accept ±2% tolerance band (wallet fee deductions)
+- 6-hour pending-payment fallback before hard 30-min expiry
+- HD wallet: BIP32 hardened derivation only, never log seed alongside addresses
+- MASTER_TON_SEED rotation: annually even if uncompromised
+
+### 12-Month Moat Strategy
+Scanner has 12-18 month lifespan before Misti + IDE integration commoditizes it.
+Real moat: anonymized vulnerability intelligence database from scan corpus.
+Pivot target at Month 12: threat-intel SaaS for TON protocol teams ($500-2,000/month).
+Insurance policy: study TAC (TON Application Chain, EVM L2) for ecosystem hedge.

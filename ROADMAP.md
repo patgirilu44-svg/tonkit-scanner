@@ -832,3 +832,57 @@ ACCEPTANCE:
 - npx jest --testPathPattern="rule-engine|fixture-runner" exits 0
 - all 9 rules pass (5 Tact + 4 FunC)
 - all fixture pairs pass for all rules
+---
+
+## TASK: T019
+STATUS: PENDING
+TITLE: Redacted free tier + TonKit Verified badge embed
+PHASE: Conversion
+
+DESCRIPTION:
+Current free tier shows nothing specific — developers see a blurred report and feel no urgency.
+This task adds two things that 10x paid conversion:
+1. Redacted findings: free tier shows finding COUNT + LINE NUMBERS but not content
+2. TonKit Verified badge: embeddable SVG badge that shows scan status, links to public report
+
+The line numbers create acute loss aversion ("what's on line 47?") that drives $49 conversion.
+The badge in GitHub README creates organic viral distribution that Misti cannot replicate.
+
+ACCEPTANCE_CRITERIA:
+- [ ] Free tier report page shows: "X findings detected: Y CRITICAL, Z HIGH, N MEDIUM" with line number hints
+- [ ] Finding content (title, description, recommendation) is blurred/hidden on free tier
+- [ ] Line numbers ARE visible on free tier (e.g. "Issue detected near line 47")
+- [ ] PaymentGate shows specific line numbers in the unlock CTA: "Unlock details for lines 47, 102, 203 — $49"
+- [ ] app/api/badge/[reportId]/route.ts serves dynamic SVG badge using @vercel/og Edge Runtime
+- [ ] Badge shows: green if 0 critical/high findings, yellow if medium only, red if critical/high present
+- [ ] Badge includes "TonKit Verified" text and links to public report URL
+- [ ] Report page shows embed code: ![TonKit Verified](https://tonkit.dev/api/badge/REPORT_ID.svg)
+- [ ] Badge SVG is cacheable (Cache-Control: public, max-age=3600)
+- [ ] Badge re-fetches on report re-scan (cache busted by new reportId)
+- [ ] components/BadgeEmbed.tsx renders copyable embed code with one-click copy button
+- [ ] Free tier report page has "Share your scan" section with Telegram share + badge embed
+
+FILES_AFFECTED:
+- app/api/badge/[reportId]/route.ts
+- app/report/[reportId]/page.tsx
+- components/BadgeEmbed.tsx
+- components/PaymentGate.tsx
+- components/FindingItem.tsx
+
+TEST_COMMAND:
+npx tsc --noEmit
+
+COMPLETION_SIGNAL:
+TEST_COMMAND exits 0. app/api/badge/[reportId]/route.ts exists with Edge Runtime export.
+
+ACCEPTANCE:
+- npx tsc --noEmit exits 0
+- app/api/badge/[reportId]/route.ts contains "runtime = 'edge'"
+- grep "line" components/PaymentGate.tsx returns results (line numbers shown in CTA)
+- grep "audit" app/report/[reportId]/page.tsx returns empty (word audit not used)
+
+OUT_OF_SCOPE:
+- Animated badges
+- Badge customization options
+- Multiple badge styles
+- Paid badge variants
