@@ -153,10 +153,59 @@ jobs:
         env:
           REVIEW_ISSUES: ${{ needs.ai-review.outputs.review_issues }}
 
+
+  smoke-test:
+    name: End-to-End Smoke Test
+    runs-on: ubuntu-latest
+    needs: deploy
+    if: success() && !contains(github.event.head_commit.message, '[skip ci]')
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Wait for Vercel deployment
+        run: sleep 30
+
+      - name: Smoke test scan endpoint
+        env:
+          APP_URL: ${{ secrets.NEXT_PUBLIC_APP_URL }}
+        run: |
+          if [ ! -f fixtures/tact/require-placement/vulnerable.tact ]; then
+            echo "No fixtures yet - skipping smoke test"
+            exit 0
+          fi
+          
+          PAYLOAD=$(jq -n --arg code "$(cat fixtures/tact/require-placement/vulnerable.tact)" '{contractCode: $code, language: "tact"}')
+          
+          HTTP_CODE=$(curl -s -o /tmp/response.json -w "%{http_code}" -X POST "$APP_URL/api/scan" -H "Content-Type: application/json" -d "$PAYLOAD")
+          
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "Smoke test FAILED: HTTP $HTTP_CODE"
+            cat /tmp/response.json
+            exit 1
+          fi
+          
+          REPORT_ID=$(jq -r '.reportId // empty' /tmp/response.json)
+          if [ -z "$REPORT_ID" ]; then
+            echo "Smoke test FAILED: no reportId"
+            cat /tmp/response.json
+            exit 1
+          fi
+          
+          echo "Smoke test PASSED: reportId=$REPORT_ID"
+      
+      - name: Health check
+        env:
+          APP_URL: ${{ secrets.NEXT_PUBLIC_APP_URL }}
+        run: |
+          curl -sf "$APP_URL/api/health" || exit 1
+          echo "Health check PASSED"
+
   notify-failure:
     name: Notify on Failure
     runs-on: ubuntu-latest
-    needs: [build-and-test, ai-review, deploy, trigger-fix]
+    needs: [build-and-test, ai-review, deploy, trigger-fix, smoke-test]
     if: failure() && !contains(github.event.head_commit.message, '[skip ci]')
 
     steps:

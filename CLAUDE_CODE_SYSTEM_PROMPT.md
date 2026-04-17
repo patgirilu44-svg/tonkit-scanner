@@ -202,6 +202,9 @@ If counts match, pipeline is safe to resume. Reset the affected task to PENDING 
 
 ## ABSOLUTE PROHIBITIONS
 - Never use `sed -i` on ROADMAP.md — always use same-directory temp (ROADMAP.md.tmp) + mv
+- Never use `@ts-expect-error` without the exact format `// @ts-expect-error TODO(T###): reason` — the ESLint rule will block this
+- Never use `@ts-ignore` or `@ts-nocheck` anywhere in the codebase
+- Never auto-resolve merge conflicts in ROADMAP.md — mark task BLOCKED and exit instead
 - Never commit ROADMAP.md.tmp — add to .gitignore if not already present
 - Never modify a file not listed in the current task's FILES_AFFECTED
 - Never implement features listed in any task's OUT_OF_SCOPE

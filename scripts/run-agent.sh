@@ -1,37 +1,39 @@
 #!/bin/bash
-# run-agent.sh
-# Called by cron every 4 hours.
-# Pulls latest, checks for PENDING tasks, invokes Claude Code if found.
+# run-agent.sh — Autonomous Claude Code trigger
+# CRITICAL: trap must be FIRST statement before any logic
 
-set -euo pipefail
+set -uo pipefail
 
-REPO_DIR="/home/$(whoami)/tonkit"
+# ── TRAP FIRST — ensures lock clears even on SIGKILL of children ──────────────
+trap 'rm -f /tmp/tonkit-agent.lock 2>/dev/null' EXIT TERM HUP INT
+
+REPO_DIR="/home/$(whoami)/tonkit-scanner"
 LOG_DIR="$REPO_DIR/logs"
 LOCK_FILE="/tmp/tonkit-agent.lock"
 
 mkdir -p "$LOG_DIR"
 
-LOG="$LOG_DIR/agent-$(date +%Y-%m-%d).log"
-
 log() {
-  echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) $1" | tee -a "$LOG"
+  echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) AGENT: $1" | tee -a "$LOG_DIR/run-agent.log"
 }
 
-# ── Lock check ───────────────────────────────────────────────────────────────
+# ── Node memory cap to prevent OOM on CX22 ────────────────────────────────────
+export NODE_OPTIONS="--max-old-space-size=2048"
+
+# ── Lock check ────────────────────────────────────────────────────────────────
 if [ -f "$LOCK_FILE" ]; then
   LOCK_AGE=$(( $(date +%s) - $(stat -c %Y "$LOCK_FILE") ))
   if [ "$LOCK_AGE" -lt 7200 ]; then
-    log "AGENT: active session in progress ($LOCK_AGE seconds old), skipping"
+    log "lock exists ($LOCK_AGE seconds old), exiting"
     exit 0
   fi
-  log "AGENT: stale lock ($LOCK_AGE seconds old), removing and resetting stuck task"
+  log "stale lock ($LOCK_AGE seconds old), removing and resetting stuck task"
   rm "$LOCK_FILE"
-  # Reset any IN_PROGRESS task to PENDING — stale lock = crashed session
-  # Without this, the task stays IN_PROGRESS forever and pipeline skips it
   cd "$REPO_DIR"
+  # Reset stuck IN_PROGRESS task to PENDING
   if grep -q "STATUS: IN_PROGRESS" ROADMAP.md 2>/dev/null; then
     STUCK_TASK=$(grep -B1 "STATUS: IN_PROGRESS" ROADMAP.md | grep "## TASK:" | sed 's/## TASK: //' | head -1)
-    log "AGENT: resetting stuck task $STUCK_TASK from IN_PROGRESS to PENDING"
+    log "resetting stuck task $STUCK_TASK from IN_PROGRESS to PENDING"
     sed "/## TASK: ${STUCK_TASK}/,/^---$/{s/STATUS: IN_PROGRESS/STATUS: PENDING/}" ROADMAP.md > ROADMAP.md.tmp && mv ROADMAP.md.tmp ROADMAP.md || true
     git add ROADMAP.md
     git commit -m "fix: reset stuck task ${STUCK_TASK} after stale lock [skip ci]" || true
@@ -39,77 +41,92 @@ if [ -f "$LOCK_FILE" ]; then
   fi
 fi
 
-# ── Pull latest ───────────────────────────────────────────────────────────────
-cd "$REPO_DIR"
-git pull origin main 2>&1 | tee -a "$LOG"
+echo $$ > "$LOCK_FILE"
 
-# ── Check for PENDING tasks ───────────────────────────────────────────────────
-# ── ROADMAP integrity check + auto-restore ──────────────────────────────────
-# Clean up any leftover temp file from crashed previous session
+cd "$REPO_DIR"
+
+# ── Pull latest + reset to main (prevents merge conflict chaos) ───────────────
+git fetch origin main
+git reset --hard origin/main
+
+# ── Clean up any leftover temp files from crashed sessions ────────────────────
 rm -f "$REPO_DIR/ROADMAP.md.tmp"
 
-# Validate ROADMAP structure
+# ── ROADMAP integrity check + auto-restore ────────────────────────────────────
 TASK_COUNT=$(grep -c "## TASK:" ROADMAP.md 2>/dev/null || echo 0)
 STATUS_COUNT=$(grep -c "^STATUS:" ROADMAP.md 2>/dev/null || echo 0)
 if [ "$TASK_COUNT" -ne "$STATUS_COUNT" ] || [ "$TASK_COUNT" -eq 0 ]; then
-  log "AGENT: ROADMAP corrupt (tasks=$TASK_COUNT statuses=$STATUS_COUNT) — auto-restoring from git"
+  log "ROADMAP corrupt (tasks=$TASK_COUNT statuses=$STATUS_COUNT) — auto-restoring from git"
   git checkout ROADMAP.md
   TASK_COUNT=$(grep -c "## TASK:" ROADMAP.md 2>/dev/null || echo 0)
   STATUS_COUNT=$(grep -c "^STATUS:" ROADMAP.md 2>/dev/null || echo 0)
   if [ "$TASK_COUNT" -ne "$STATUS_COUNT" ]; then
-    log "AGENT: git restore failed — ROADMAP still corrupt, requires human fix"
-    echo "{"type":"ROADMAP_CORRUPT","timestamp":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","tasks":$TASK_COUNT,"statuses":$STATUS_COUNT}" >> "$LOG_DIR/failures.jsonl"
+    log "git restore failed — ROADMAP still corrupt"
+    echo "{\"type\":\"ROADMAP_CORRUPT\",\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" >> "$LOG_DIR/failures.jsonl"
     exit 1
   fi
-  log "AGENT: ROADMAP restored from git successfully"
 fi
 
-
-PENDING_COUNT=$(grep -c "STATUS: PENDING" ROADMAP.md 2>/dev/null || echo 0)
-
-if [ "$PENDING_COUNT" -eq 0 ]; then
-  log "AGENT: no PENDING tasks found, nothing to do"
-  echo "{\"type\":\"AGENT_IDLE\",\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"pending\":0}" >> "$LOG_DIR/events.jsonl"
-  exit 0
-fi
-
-# ── Check for FAILED tasks (require human decision) ───────────────────────────
+# ── Check for FAILED tasks (requires human) ───────────────────────────────────
 FAILED_COUNT=$(grep -c "STATUS: FAILED" ROADMAP.md 2>/dev/null || echo 0)
 if [ "$FAILED_COUNT" -gt 0 ]; then
-  log "AGENT: $FAILED_COUNT FAILED task(s) in ROADMAP — requires human decision, skipping"
-  echo "{\"type\":\"BLOCKED_BY_FAILURE\",\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"failed_tasks\":$FAILED_COUNT}" >> "$LOG_DIR/events.jsonl"
+  log "$FAILED_COUNT FAILED task(s) in ROADMAP — requires human decision, skipping"
   exit 0
 fi
 
-log "AGENT: found $PENDING_COUNT PENDING task(s), invoking Claude Code"
-echo "{\"type\":\"AGENT_START\",\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"pending\":$PENDING_COUNT}" >> "$LOG_DIR/events.jsonl"
-
-# ── Read system prompt ────────────────────────────────────────────────────────
-SYSTEM_PROMPT=$(cat "$REPO_DIR/CLAUDE_CODE_SYSTEM_PROMPT.md")
+# ── Check for PENDING work ────────────────────────────────────────────────────
+PENDING_COUNT=$(grep -c "STATUS: PENDING" ROADMAP.md 2>/dev/null || echo 0)
+if [ "$PENDING_COUNT" -eq 0 ]; then
+  log "ROADMAP COMPLETE — no PENDING tasks"
+  exit 0
+fi
 
 # ── Invoke Claude Code ────────────────────────────────────────────────────────
-# The --print flag runs non-interactively with the given prompt
-claude \
-  --print \
-  "$SYSTEM_PROMPT" \
-  2>&1 | tee -a "$LOG"
+log "invoking Claude Code for next PENDING task"
+claude --print "Read CLAUDE_CODE_SYSTEM_PROMPT.md and PROJECT_CONTEXT.md, then execute the 10-step procedure to complete the next PENDING task in ROADMAP.md" >> "$LOG_DIR/run-agent.log" 2>&1 &
 
-EXIT_CODE=${PIPESTATUS[0]}
+CLAUDE_PID=$!
+# 90-minute timeout on Claude Code — prevents infinite hangs
+(
+  sleep 5400
+  if kill -0 $CLAUDE_PID 2>/dev/null; then
+    log "Claude Code exceeded 90 min timeout — killing"
+    kill -TERM $CLAUDE_PID 2>/dev/null
+    sleep 10
+    kill -KILL $CLAUDE_PID 2>/dev/null
+  fi
+) &
+WATCHDOG_PID=$!
 
-if [ $EXIT_CODE -eq 0 ]; then
-  log "AGENT: Claude Code session completed successfully"
-  echo "{\"type\":\"AGENT_COMPLETE\",\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"exit_code\":0}" >> "$LOG_DIR/events.jsonl"
-else
-  log "AGENT: Claude Code session failed with exit code $EXIT_CODE"
-  echo "{\"type\":\"AGENT_FAILED\",\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"exit_code\":$EXIT_CODE}" >> "$LOG_DIR/failures.jsonl"
-fi
+wait $CLAUDE_PID
+CLAUDE_EXIT=$?
+kill $WATCHDOG_PID 2>/dev/null
 
-# Lock is managed by Claude Code itself per the system prompt.
-# If Claude Code crashed without removing the lock, clean it up here.
-if [ -f "$LOCK_FILE" ]; then
-  LOCK_AGE=$(( $(date +%s) - $(stat -c %Y "$LOCK_FILE") ))
-  if [ "$LOCK_AGE" -gt 60 ]; then
-    log "AGENT: cleaning up orphaned lock file"
-    rm "$LOCK_FILE"
+log "Claude Code exited with code $CLAUDE_EXIT"
+
+# ── POST-HOC VERIFICATION — DO NOT TRUST CLAUDE CODE EXIT CODE ────────────────
+# Claude Code exits 0 on most failures. We verify independently.
+git fetch origin main
+git reset --hard origin/main
+
+# Check if any task was actually marked DONE in this session
+RECENT_DONE=$(git log --since='2 hours ago' --oneline --grep='feat(' | wc -l)
+if [ "$RECENT_DONE" -eq 0 ]; then
+  log "WARNING: Claude Code session completed but no feat() commit detected"
+  # Check if a task is stuck at IN_PROGRESS
+  if grep -q "STATUS: IN_PROGRESS" ROADMAP.md 2>/dev/null; then
+    STUCK=$(grep -B1 "STATUS: IN_PROGRESS" ROADMAP.md | grep "## TASK:" | sed 's/## TASK: //' | head -1)
+    log "Task $STUCK left IN_PROGRESS — next run will reset to PENDING after stale lock"
+    
+    # Send Telegram alert if configured
+    if [ -n "${TELEGRAM_BOT_TOKEN:-}" ] && [ -n "${TELEGRAM_CHAT_ID:-}" ]; then
+      curl -s "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+        -d "chat_id=${TELEGRAM_CHAT_ID}" \
+        -d "text=⚠️ Task ${STUCK} left IN_PROGRESS after Claude Code session. Will auto-reset on next cron." \
+        >> "$LOG_DIR/run-agent.log" 2>&1 || true
+    fi
   fi
 fi
+
+log "run-agent session complete"
+exit 0
