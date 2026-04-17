@@ -33,6 +33,27 @@ cd "$REPO_DIR"
 git pull origin main 2>&1 | tee -a "$LOG"
 
 # ── Check for PENDING tasks ───────────────────────────────────────────────────
+# ── ROADMAP integrity check + auto-restore ──────────────────────────────────
+# Clean up any leftover temp file from crashed previous session
+rm -f "$REPO_DIR/ROADMAP.md.tmp"
+
+# Validate ROADMAP structure
+TASK_COUNT=$(grep -c "## TASK:" ROADMAP.md 2>/dev/null || echo 0)
+STATUS_COUNT=$(grep -c "^STATUS:" ROADMAP.md 2>/dev/null || echo 0)
+if [ "$TASK_COUNT" -ne "$STATUS_COUNT" ] || [ "$TASK_COUNT" -eq 0 ]; then
+  log "AGENT: ROADMAP corrupt (tasks=$TASK_COUNT statuses=$STATUS_COUNT) — auto-restoring from git"
+  git checkout ROADMAP.md
+  TASK_COUNT=$(grep -c "## TASK:" ROADMAP.md 2>/dev/null || echo 0)
+  STATUS_COUNT=$(grep -c "^STATUS:" ROADMAP.md 2>/dev/null || echo 0)
+  if [ "$TASK_COUNT" -ne "$STATUS_COUNT" ]; then
+    log "AGENT: git restore failed — ROADMAP still corrupt, requires human fix"
+    echo "{"type":"ROADMAP_CORRUPT","timestamp":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","tasks":$TASK_COUNT,"statuses":$STATUS_COUNT}" >> "$LOG_DIR/failures.jsonl"
+    exit 1
+  fi
+  log "AGENT: ROADMAP restored from git successfully"
+fi
+
+
 PENDING_COUNT=$(grep -c "STATUS: PENDING" ROADMAP.md 2>/dev/null || echo 0)
 
 if [ "$PENDING_COUNT" -eq 0 ]; then

@@ -51,7 +51,7 @@ Never use `sed -i` directly on ROADMAP.md — always write to a temp file first,
 Update the task status to IN_PROGRESS atomically:
 ```bash
 TASK_ID="T001"  # replace with actual task id
-sed "/## TASK: ${TASK_ID}/,/^---$/{s/STATUS: PENDING/STATUS: IN_PROGRESS/}" ROADMAP.md > ROADMAP.tmp && mv ROADMAP.tmp ROADMAP.md
+sed "/## TASK: ${TASK_ID}/,/^---$/{s/STATUS: PENDING/STATUS: IN_PROGRESS/}" ROADMAP.md > ROADMAP.md.tmp && mv ROADMAP.md.tmp ROADMAP.md || { rm -f ROADMAP.md.tmp; echo "ATOMIC WRITE FAILED"; exit 1; }
 ```
 
 Verify the change was applied:
@@ -106,7 +106,7 @@ Check the COMPLETION_SIGNAL condition manually. If it specifies a file must exis
 Update ROADMAP.md task status to DONE using atomic write:
 ```bash
 TASK_ID="T001"  # replace with actual task id
-sed "/## TASK: ${TASK_ID}/,/^---$/{s/STATUS: IN_PROGRESS/STATUS: DONE/}" ROADMAP.md > ROADMAP.tmp && mv ROADMAP.tmp ROADMAP.md
+sed "/## TASK: ${TASK_ID}/,/^---$/{s/STATUS: IN_PROGRESS/STATUS: DONE/}" ROADMAP.md > ROADMAP.md.tmp && mv ROADMAP.md.tmp ROADMAP.md || { rm -f ROADMAP.md.tmp; echo "ATOMIC WRITE FAILED"; exit 1; }
 ```
 
 Verify:
@@ -142,7 +142,7 @@ If tests fail after 3 attempts, or if any unrecoverable error occurs:
 
 1. Update ROADMAP.md task status to FAILED using atomic write:
 ```bash
-sed "/## TASK: ${TASK_ID}/,/^---$/{s/STATUS: IN_PROGRESS/STATUS: FAILED/}" ROADMAP.md > ROADMAP.tmp && mv ROADMAP.tmp ROADMAP.md
+sed "/## TASK: ${TASK_ID}/,/^---$/{s/STATUS: IN_PROGRESS/STATUS: FAILED/}" ROADMAP.md > ROADMAP.md.tmp && mv ROADMAP.md.tmp ROADMAP.md || { rm -f ROADMAP.md.tmp; echo "ATOMIC WRITE FAILED"; exit 1; }
 ```
 
 2. Append a failure log entry to ROADMAP.md under the task:
@@ -164,10 +164,23 @@ git push origin main
 
 4. Remove lock file and exit with code 1.
 
+### CORRUPT ROADMAP RECOVERY
+If ROADMAP.md becomes corrupt (truncated, merge conflict markers, invalid STATUS values):
+```bash
+# Restore from last good git commit
+git checkout ROADMAP.md
+# Verify integrity
+TASKS=$(grep -c "## TASK:" ROADMAP.md)
+STATUSES=$(grep -c "^STATUS:" ROADMAP.md)
+echo "Tasks: $TASKS | Statuses: $STATUSES"
+```
+If counts match, pipeline is safe to resume. Reset the affected task to PENDING and continue.
+
 ---
 
 ## ABSOLUTE PROHIBITIONS
-- Never use `sed -i` on ROADMAP.md — always use temp file + mv
+- Never use `sed -i` on ROADMAP.md — always use same-directory temp (ROADMAP.md.tmp) + mv
+- Never commit ROADMAP.md.tmp — add to .gitignore if not already present
 - Never modify a file not listed in the current task's FILES_AFFECTED
 - Never implement features listed in any task's OUT_OF_SCOPE
 - Never push if tests are failing
