@@ -8,6 +8,7 @@ Format reference:
 - Each task is atomic: completable in one Claude Code session
 - FILES_AFFECTED: only modify listed files
 - OUT_OF_SCOPE: never implement these in this task
+- OUTPUTS: what this task exposes for other tasks to use (filled in by Claude Code when marking DONE)
 
 ---
 

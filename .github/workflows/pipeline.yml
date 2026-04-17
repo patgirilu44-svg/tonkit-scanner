@@ -152,3 +152,20 @@ jobs:
             ~/tonkit/scripts/fix-agent.sh
         env:
           REVIEW_ISSUES: ${{ needs.ai-review.outputs.review_issues }}
+
+  notify-failure:
+    name: Notify on Failure
+    runs-on: ubuntu-latest
+    needs: [build-and-test, ai-review, deploy, trigger-fix]
+    if: failure() && !contains(github.event.head_commit.message, '[skip ci]')
+
+    steps:
+      - name: Send Telegram alert
+        run: |
+          if [ -n "${{ secrets.TELEGRAM_BOT_TOKEN }}" ] && [ -n "${{ secrets.TELEGRAM_CHAT_ID }}" ]; then
+            MSG="⚠️ TonKit Pipeline FAILED%0ACommit: ${{ github.sha }}%0AMessage: ${{ github.event.head_commit.message }}%0ACheck: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            curl -s "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage?chat_id=${{ secrets.TELEGRAM_CHAT_ID }}&text=${MSG}" > /dev/null
+            echo "Telegram alert sent"
+          else
+            echo "TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID not set — skipping alert"
+          fi

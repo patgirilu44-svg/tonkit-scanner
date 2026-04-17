@@ -231,7 +231,27 @@ def generate_html(tasks, deploys, failures, events):
 </body>
 </html>"""
 
+
+def backup_roadmap():
+    """Weekly backup of ROADMAP.md to a separate branch — runs on Sundays only."""
+    from datetime import datetime, timezone
+    today = datetime.now(timezone.utc)
+    if today.weekday() != 6:  # 6 = Sunday
+        return
+    branch = "roadmap-backup-" + today.strftime("%Y%m%d")
+    try:
+        subprocess.run(["git", "-C", str(REPO_DIR), "checkout", "-b", branch],
+                      check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(REPO_DIR), "push", "origin", branch],
+                      check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(REPO_DIR), "checkout", "main"],
+                      check=True, capture_output=True)
+        print(f"ROADMAP backup pushed to branch: {branch}")
+    except subprocess.CalledProcessError as e:
+        print(f"Backup skipped (branch may exist): {e}")
+
 if __name__ == "__main__":
+    backup_roadmap()
     tasks = parse_roadmap()
     deploys = get_recent_deploys()
     failures = get_recent_failures()
